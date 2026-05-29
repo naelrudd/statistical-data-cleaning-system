@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+uploads/*
+exports/*
+!uploads/.gitkeep
+!exports/.gitkeep
+venv/
+.venv/
+*.egg-info/
+dist/
+.vscode/
+.idea/
+*.xlsx
+*.csv
+*.html
