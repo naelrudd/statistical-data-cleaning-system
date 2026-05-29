@@ -1,20 +1,30 @@
-import os
-import uuid
+import os, uuid
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from werkzeug.utils import secure_filename
 from engine import DataParser, DataCleaner, DataValidator, OutlierDetector, QualityScorer, DataExporter
-from config import UPLOAD_FOLDER, EXPORT_FOLDER, ALLOWED_EXTENSIONS, IS_VERCEL
+from config import UPLOAD_FOLDER, EXPORT_FOLDER, ALLOWED_EXTENSIONS, TEMP_FOLDER, IS_VERCEL
+from r2_storage import r2
 
 app = Flask(__name__)
 app.config.from_object('config')
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(EXPORT_FOLDER, exist_ok=True)
+os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 sessions = {}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def store_upload(file, session_id):
+    ext = os.path.splitext(file.filename)[1]
+    safe_name = f"{session_id}{ext}"
+    local_path = os.path.join(UPLOAD_FOLDER, safe_name)
+    file.save(local_path)
+    if r2.enabled:
+        r2.upload(local_path, f"uploads/{safe_name}")
+    return local_path
 
 @app.route('/')
 def index():
@@ -32,10 +42,7 @@ def upload():
             return redirect(request.url)
 
         session_id = str(uuid.uuid4())
-        ext = os.path.splitext(file.filename)[1]
-        safe_name = f"{session_id}{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, safe_name)
-        file.save(filepath)
+        filepath = store_upload(file, session_id)
 
         parser = DataParser(filepath)
         df = parser.parse()
@@ -62,7 +69,8 @@ def dashboard(session_id):
     if not session:
         flash('Session not found', 'error')
         return redirect(url_for('index'))
-    return render_template('dashboard.html', session_id=session_id, info=session['info'])
+    r2_enabled = 'true' if r2.enabled else 'false'
+    return render_template('dashboard.html', session_id=session_id, info=session['info'], r2_enabled=r2_enabled)
 
 @app.route('/api/<session_id>/info')
 def api_info(session_id):
@@ -202,6 +210,12 @@ def export_excel(session_id):
         session.get('outlier_summary', {})
     )
     exporter.export_cleaned(out_path)
+
+    if r2.enabled:
+        r2.upload(out_path, f"exports/cleaned_{session_id}.xlsx")
+        url = r2.presigned_url(f"exports/cleaned_{session_id}.xlsx")
+        return redirect(url)
+
     return send_file(out_path, as_attachment=True, download_name='cleaned_data.xlsx')
 
 @app.route('/export/<session_id>/report')
@@ -231,6 +245,12 @@ def export_report(session_id):
     out_path = os.path.join(EXPORT_FOLDER, f"report_{session_id}.html")
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write(html)
+
+    if r2.enabled:
+        r2.upload(out_path, f"exports/report_{session_id}.html")
+        url = r2.presigned_url(f"exports/report_{session_id}.html")
+        return redirect(url)
+
     return send_file(out_path, as_attachment=True, download_name='validation_report.html')
 
 if __name__ == '__main__':

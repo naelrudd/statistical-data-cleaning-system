@@ -1,11 +1,12 @@
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-IS_VERCEL = os.environ.get('VERCEL', False) or os.environ.get('VERCEL_ENV', False)
+TEMP_FOLDER = '/tmp/statclean'
+IS_VERCEL = os.environ.get('VERCEL', '') or os.environ.get('VERCEL_ENV', '')
 
 if IS_VERCEL:
-    UPLOAD_FOLDER = '/tmp/uploads'
-    EXPORT_FOLDER = '/tmp/exports'
+    UPLOAD_FOLDER = os.path.join(TEMP_FOLDER, 'uploads')
+    EXPORT_FOLDER = os.path.join(TEMP_FOLDER, 'exports')
 else:
     UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
     EXPORT_FOLDER = os.path.join(BASE_DIR, 'exports')
