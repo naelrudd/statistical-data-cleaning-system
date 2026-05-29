@@ -1,7 +1,8 @@
 import os, sys, uuid, io, base64, re, json
 from datetime import datetime
 from flask import Flask, render_template as _rt, request, redirect, url_for, flash, jsonify, send_file
-from werkzeug.utils import secure_filename
+from jinja2 import Environment, BaseLoader, TemplateNotFound
+
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
@@ -67,27 +68,36 @@ label{display:block;margin-bottom:.3rem;font-weight:500;font-size:.85rem}
 @media(max-width:768px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
 </style></head><body>
 <nav><h1>StatClean <span>| Data Cleaning System</span></h1><div><a href=/ >Home</a><a href=/upload>Upload</a></div></nav>
-<div class=container>CONTENT_PLACEHOLDER</div></body></html>'''
+<div class=container>
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}{% for category, msg in messages %}
+<div class="flash {{ 'flash-'+category if category else '' }}" style="padding:.8rem 1rem;border-radius:6px;margin-bottom:1rem;font-size:.9rem;background:#fff3e0;color:#e65100;border:1px solid #ffe0b2">{{ msg }}</div>
+{% endfor %}{% endif %}
+{% endwith %}
+CONTENT_PLACEHOLDER</div></body></html>'''
+
+_jinja_env = None
 
 def render(template_name, **ctx):
+    global _jinja_env
     if TEMPLATES_AVAILABLE:
         try: return _rt(template_name, **ctx)
-        except: pass
-    from jinja2 import Environment, BaseLoader, TemplateNotFound
-    class StrLoader(BaseLoader):
-        templates = {
-            'index.html': INDEX_HTML,
-            'upload.html': UPLOAD_HTML,
-            'dashboard.html': DASHBOARD_HTML,
-            'base.html': BASE_HTML,
-        }
-        def get_source(self, env, name):
-            tmpl = self.templates.get(name)
-            if tmpl is None:
-                raise TemplateNotFound(name)
-            return tmpl, name, True
-    env = Environment(loader=StrLoader())
-    t = env.get_template(template_name)
+        except TemplateNotFound: pass
+    if _jinja_env is None:
+        class StrLoader(BaseLoader):
+            templates = {
+                'index.html': INDEX_HTML,
+                'upload.html': UPLOAD_HTML,
+                'dashboard.html': DASHBOARD_HTML,
+                'base.html': BASE_HTML,
+            }
+            def get_source(self, env, name):
+                tmpl = self.templates.get(name)
+                if tmpl is None:
+                    raise TemplateNotFound(name)
+                return tmpl, name, True
+        _jinja_env = Environment(loader=StrLoader())
+    t = _jinja_env.get_template(template_name)
     return t.render(**ctx)
 
 INDEX_HTML = BASE_HTML.replace('TITLE_PLACEHOLDER', '<title>StatClean - Home</title>')
@@ -125,7 +135,8 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace('CONTENT_PLACEHOLDER', '''
 <div class="flex mt-2" style=gap:1rem>
 <button class="btn btn-primary" onclick=runPipeline()>Run Full Pipeline</button>
 <button class="btn btn-success" onclick=runCleaning()>1. Clean</button>
-<button class="btn btn-warning" onclick=runValidation()>2. Validate</button>
+<button class="btn btn-warning" onclick=runOutliers()>2. Outliers</button>
+<button class="btn btn-warning" onclick=runValidation()>3. Validate</button>
 </div>
 <div id=cleanSection style=display:none class="card mt-3"><h3>Cleaning Results</h3><div id=cleanResult></div></div>
 <div id=valSection style=display:none class="card mt-3"><h3>Validation Results</h3><div id=valResult></div></div>
@@ -135,16 +146,156 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace('CONTENT_PLACEHOLDER', '''
 <div id=exportSection style=display:none class="card mt-3"><h3>Export</h3><div class=flex style=gap:1rem><a class="btn btn-success" href=/export/{{ session_id }}/excel>Download Cleaned Excel</a><a class="btn btn-warning" href=/export/{{ session_id }}/report>Download Report</a></div></div>
 <script>
 const sid=document.getElementById('sid').value;loadPreview();
-async function loadPreview(){const r=await(await fetch('/api/'+sid+'/preview')).json();let h='<table><thead><tr>';r.columns.forEach(c=>h+='<th>'+esc(c)+'</th>');h+='</tr></thead><tbody>';r.rows.forEach(row=>{h+='<tr>';r.columns.forEach(c=>h+='<td>'+esc(row[c])+'</td>');h+='</tr>'});h+='</tbody></table>';document.getElementById('preview').innerHTML=h}
-async function runPipeline(){await runCleaning();await runValidation();await loadQuality();await loadCharts();document.getElementById('exportSection').style.display='block';document.getElementById('st5').classList.add('done')}
-async function runCleaning(){const r=await(await fetch('/api/'+sid+'/clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:'drop',remove_duplicates:true})})).json();const rep=r.report;document.getElementById('cleanSection').style.display='block';document.getElementById('st2').classList.add('done');const mc=Object.values(rep.missing_before||{}).reduce((a,b)=>a+b,0);document.getElementById('sMissing').textContent=mc;document.getElementById('sRows').textContent=r.rows;document.getElementById('st3').classList.add('active');let h='<div class=grid-3><div class=stat-card><div class=number>'+mc+'</div><div class=label>Missing</div></div><div class=stat-card><div class=number>'+rep.duplicates_found+'</div><div class=label>Duplicates</div></div><div class=stat-card><div class=number>'+(rep.duplicates_removed||0)+'</div><div class=label>Removed</div></div></div>';document.getElementById('cleanResult').innerHTML=h;document.getElementById('st3').classList.remove('active')}
-async function runValidation(){const r=await(await fetch('/api/'+sid+'/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();document.getElementById('valSection').style.display='block';document.getElementById('st3').classList.add('done');const t=r.summary.total;document.getElementById('sErrors').textContent=t;let h='<div class=grid-3><div class=stat-card><div class=number style=color:#c62828>'+t+'</div><div class=label>Errors</div></div><div class=stat-card><div class=number>'+r.summary.cross_errors+'</div><div class=label>Cross-Validations</div></div></div>';if(r.format_errors){h+='<h4>Format Errors</h4><div class=table-wrap style=max-height:200px><table><tr><th>Column</th><th>Errors</th></tr>';for(const[c,errs]of Object.entries(r.format_errors))h+='<tr><td>'+c+'</td><td>'+errs.length+'</td></tr>';h+='</table></div>'}document.getElementById('valResult').innerHTML=h}
-async function loadQuality(){const r=await(await fetch('/api/'+sid+'/quality')).json();const o=r.overall||0;document.getElementById('sScore').textContent=o+'%';document.getElementById('st4').classList.add('done');let h='<canvas id=gChart width=280 height=280></canvas>';document.getElementById('gauge').innerHTML=h;new Chart(document.getElementById('gChart'),{type:'doughnut',data:{labels:['Score','Remaining'],datasets:[{data:[o,100-o],backgroundColor:['#1565C0','#e0e0e0'],borderWidth:0}]},options:{cutout:'70%',plugins:{legend:{display:false}}}});let d='<table><tr><th>Dimension</th><th>Score</th></tr>';['completeness','consistency','duplicate_free','format_validity','outlier_free'].forEach(k=>{const lb={'completeness':'Completeness','consistency':'Consistency','duplicate_free':'No Duplicates','format_validity':'Format Validity','outlier_free':'No Outliers'};d+='<tr><td>'+(lb[k]||k)+'</td><td>'+(r[k]||0)+'</td></tr>'});d+='</table>';document.getElementById('qualDetails').innerHTML=d;document.getElementById('chartSection').style.display='block'}
-async function loadCharts(){const r=await(await fetch('/api/'+sid+'/charts')).json();if(r.charts&&r.charts.summary)document.getElementById('chartContainer').innerHTML='<img src="data:image/png;base64,'+r.charts.summary+'" style=max-width:100%;border-radius:8px>';document.getElementById('st5').classList.add('active')}
-function esc(s){if(s===null||s===undefined)return '';const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
+
+async function apiFetch(url, opts) {
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + (await r.text()).slice(0, 100));
+    return r.json();
+}
+
+async function loadPreview() {
+    try {
+        const r = await apiFetch('/api/'+sid+'/preview');
+        let h='<table><thead><tr>';r.columns.forEach(c=>h+='<th>'+esc(c)+'</th>');h+='</tr></thead><tbody>';
+        r.rows.forEach(row=>{h+='<tr>';r.columns.forEach(c=>h+='<td>'+esc(row[c])+'</td>');h+='</tr>'});h+='</tbody></table>';
+        document.getElementById('preview').innerHTML=h;
+    } catch(e) {
+        document.getElementById('preview').innerHTML='<div style="color:#c62828;padding:1rem">Failed to load preview: '+esc(e.message)+'</div>';
+    }
+}
+
+async function runPipeline() {
+    await runCleaning();
+    await runOutliers();
+    await runValidation();
+    await loadQuality();
+    await loadCharts();
+    document.getElementById('st5').classList.remove('active');
+    document.getElementById('st5').classList.add('done');
+    document.getElementById('exportSection').style.display='block';
+}
+
+async function runCleaning() {
+    try {
+        const r = await apiFetch('/api/'+sid+'/clean', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:'drop',remove_duplicates:true})});
+        const rep=r.report;
+        document.getElementById('cleanSection').style.display='block';
+        document.getElementById('st2').classList.remove('active');
+        document.getElementById('st2').classList.add('done');
+        document.getElementById('st3').classList.add('active');
+        const mc=Object.values(rep.missing_before||{}).reduce((a,b)=>a+b,0);
+        document.getElementById('sMissing').textContent=mc;
+        document.getElementById('sRows').textContent=r.rows;
+        let h='<div class=grid-3><div class=stat-card><div class=number>'+mc+'</div><div class=label>Missing</div></div><div class=stat-card><div class=number>'+rep.duplicates_found+'</div><div class=label>Duplicates</div></div><div class=stat-card><div class=number>'+(rep.duplicates_removed||0)+'</div><div class=label>Removed</div></div></div>';
+        document.getElementById('cleanResult').innerHTML=h;
+    } catch(e) {
+        document.getElementById('cleanResult').innerHTML='<div style="color:#c62828">Error: '+esc(e.message)+'</div>';
+    }
+}
+
+async function runOutliers() {
+    try {
+        const r = await apiFetch('/api/'+sid+'/outliers', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        document.getElementById('outSection').style.display='block';
+        let h='<div class=grid-2>';
+        for(const[col,info]of Object.entries(r.details||{})) {
+            h+='<div class=stat-card><div class=number style=color:#f57f17>'+info.count+'</div><div class=label>'+esc(col)+'</div></div>';
+        }
+        if(!Object.keys(r.details||{}).length) h+='<div class=stat-card><div class=number style=color:#2e7d32>0</div><div class=label>No Outliers Found</div></div>';
+        h+='</div>';
+        document.getElementById('outResult').innerHTML=h;
+    } catch(e) {
+        document.getElementById('outResult').innerHTML='<div style="color:#c62828">Error: '+esc(e.message)+'</div>';
+    }
+}
+
+async function runValidation() {
+    try {
+        const r = await apiFetch('/api/'+sid+'/validate', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        document.getElementById('valSection').style.display='block';
+        document.getElementById('st3').classList.remove('active');
+        document.getElementById('st3').classList.add('done');
+        document.getElementById('st4').classList.add('active');
+        const t=r.summary.total;
+        document.getElementById('sErrors').textContent=t;
+        let h='<div class=grid-3><div class=stat-card><div class=number style=color:#c62828>'+t+'</div><div class=label>Errors</div></div><div class=stat-card><div class=number>'+r.summary.cross_errors+'</div><div class=label>Cross-Validations</div></div></div>';
+        if(r.format_errors) {
+            h+='<h4>Format Errors</h4><div class=table-wrap style=max-height:200px><table><tr><th>Column</th><th>Errors</th></tr>';
+            for(const[c,errs]of Object.entries(r.format_errors)) h+='<tr><td>'+esc(c)+'</td><td>'+errs.length+'</td></tr>';
+            h+='</table></div>';
+        }
+        document.getElementById('valResult').innerHTML=h;
+    } catch(e) {
+        document.getElementById('valResult').innerHTML='<div style="color:#c62828">Error: '+esc(e.message)+'</div>';
+    }
+}
+
+let gaugeChart = null;
+
+async function loadQuality() {
+    try {
+        const r = await apiFetch('/api/'+sid+'/quality');
+        const o=r.overall||0;
+        document.getElementById('sScore').textContent=o+'%';
+        document.getElementById('st4').classList.remove('active');
+        document.getElementById('st4').classList.add('done');
+        document.getElementById('st5').classList.add('active');
+        let h='<canvas id=gChart width=280 height=280></canvas>';
+        document.getElementById('gauge').innerHTML=h;
+        if(gaugeChart) gaugeChart.destroy();
+        gaugeChart=new Chart(document.getElementById('gChart'),{type:'doughnut',data:{labels:['Score','Remaining'],datasets:[{data:[o,100-o],backgroundColor:['#1565C0','#e0e0e0'],borderWidth:0}]},options:{cutout:'70%',plugins:{legend:{display:false}}}});
+        let d='<table><tr><th>Dimension</th><th>Score</th></tr>';
+        ['completeness','consistency','duplicate_free','format_validity','outlier_free'].forEach(k=>{
+            const lb={'completeness':'Completeness','consistency':'Consistency','duplicate_free':'No Duplicates','format_validity':'Format Validity','outlier_free':'No Outliers'};
+            d+='<tr><td>'+(lb[k]||k)+'</td><td>'+(r[k]||0)+'</td></tr>'
+        });
+        d+='</table>';
+        document.getElementById('qualDetails').innerHTML=d;
+        document.getElementById('chartSection').style.display='block';
+    } catch(e) {
+        document.getElementById('gauge').innerHTML='<div style="color:#c62828">Error: '+esc(e.message)+'</div>';
+    }
+}
+
+async function loadCharts() {
+    try {
+        const r = await apiFetch('/api/'+sid+'/charts');
+        if(r.charts&&r.charts.summary) document.getElementById('chartContainer').innerHTML='<img src="data:image/png;base64,'+r.charts.summary+'" style=max-width:100%;border-radius:8px>';
+    } catch(e) {
+        document.getElementById('chartContainer').innerHTML='<div style="color:#c62828">Failed to load charts: '+esc(e.message)+'</div>';
+    }
+}
+
+function esc(s) {
+    if(s===null||s===undefined) return '';
+    const d=document.createElement('div');d.textContent=String(s);return d.innerHTML;
+}
 </script>''')
 
 sessions = {}
+SESSION_DIR = os.path.join(os.path.dirname(UPLOAD_DIR), 'sessions')
+os.makedirs(SESSION_DIR, exist_ok=True)
+
+def get_session(session_id):
+    s = sessions.get(session_id)
+    if s is not None: return s
+    sp = os.path.join(SESSION_DIR, f"{session_id}.pkl")
+    if os.path.exists(sp):
+        try:
+            import pickle
+            with open(sp, 'rb') as f: s = pickle.load(f)
+            sessions[session_id] = s
+            return s
+        except: pass
+    return None
+
+def save_session(session_id, data):
+    sessions[session_id] = data
+    try:
+        import pickle
+        sp = os.path.join(SESSION_DIR, f"{session_id}.pkl")
+        with open(sp, 'wb') as f: pickle.dump(data, f)
+    except: app.logger.error(f"Failed to persist session {session_id}")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.',1)[1].lower() in ALLOWED_EXTENSIONS
@@ -166,10 +317,17 @@ class DataParser:
     def parse(self):
         ext = os.path.splitext(self.filepath)[1].lower()
         if ext == '.csv':
-            self.df = pd.read_csv(self.filepath, encoding='utf-8')
+            for enc in ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']:
+                try:
+                    self.df = pd.read_csv(self.filepath, encoding=enc)
+                    break
+                except (UnicodeDecodeError, UnicodeError):
+                    continue
+            else:
+                self.df = pd.read_csv(self.filepath, encoding='utf-8', errors='replace')
         else:
             self.df = pd.read_excel(self.filepath, engine='openpyxl')
-        self.df.columns = [str(c).strip().lower() for c in self.df.columns]
+        self.df.columns = [str(c).strip().lower().replace(' ', '_') for c in self.df.columns]
         return self.df
     def get_info(self):
         if self.df is None: return {}
@@ -212,15 +370,16 @@ class DataCleaner:
         self.report['duplicates_removed'] = b - len(self.df)
     def clean_whitespace(self):
         for col in self.df.select_dtypes(include='object').columns:
-            self.df[col] = self.df[col].astype(str).str.strip()
-            self.df[col] = self.df[col].replace({'': None, 'nan': None, 'none': None})
+            mask = self.df[col].apply(lambda x: isinstance(x, str))
+            self.df.loc[mask, col] = self.df.loc[mask, col].str.strip()
+            self.df[col] = self.df[col].replace({'': None, 'nan': None, 'none': None, 'null': None})
     def get_report(self): return self.report
 
 VALIDATION_RULES = {'gender': {'L', 'P'}, 'age': (0, 120)}
 CROSS_VALIDATION_RULES = [
     {'name': 'Student age > 40', 'conditions': {'status': 'sekolah'}, 'check': lambda r: r.get('umur', 0) > 40, 'message': 'Umur {umur} tidak sesuai status sekolah'},
     {'name': 'Working age < 10', 'conditions': {'status_kerja': 'bekerja'}, 'check': lambda r: r.get('umur', 100) < 10, 'message': 'Umur {umur} terlalu muda untuk bekerja'},
-    {'name': 'Married age < 15', 'conditions': {'status_perkawinan': 'kawin'}, 'check': lambda r: r.get('umur', 0) < 15, 'message': 'Umur {umur} belum cukup menikah'},
+    {'name': 'Married age < 15', 'conditions': {'status_perkawinan': 'kawin'}, 'check': lambda r: r.get('umur', 100) < 15, 'message': 'Umur {umur} belum cukup menikah'},
     {'name': 'Pensioner age < 45', 'conditions': {'status_kerja': 'pensiun'}, 'check': lambda r: r.get('umur', 100) < 45, 'message': 'Umur {umur} terlalu muda pensiun'},
     {'name': 'Child working', 'conditions': {}, 'check': lambda r: r.get('umur', 100) < 15 and str(r.get('status_kerja', '')).lower() == 'bekerja', 'message': 'Anak umur {umur} tidak boleh bekerja'},
 ]
@@ -285,6 +444,9 @@ class QualityScorer:
         self.df = df; self.cr = cleaner_report; self.vs = validator_summary; self.os = outlier_summary
         self.total_rows = max(len(df), 1); self.total_cells = max(self.total_rows * max(len(df.columns), 1), 1)
     def compute(self):
+        if len(self.df) == 0:
+            return {'overall': 0, 'grade': 'N/A', 'completeness': 0, 'consistency': 0,
+                    'duplicate_free': 0, 'format_validity': 0, 'outlier_free': 0}
         mc = sum(self.cr.get('missing_before', {}).values())
         completeness = max(0, 100 - mc / self.total_cells * 100)
         dup = self.cr.get('duplicates_found', 0)
@@ -319,8 +481,9 @@ class DataExporter:
             axes[0,1].set_title('Format Errors per Column')
             plt.setp(axes[0,1].xaxis.get_majorticklabels(), rotation=45, ha='right')
         else: axes[0,1].text(0.5, 0.5, 'No Format Errors', ha='center', va='center'); axes[0,1].set_title('Format Errors')
-        te = self.vs.get('total', 0); tr = len(self.df)
-        axes[1,0].pie([max(1, tr-te), te], labels=['Valid', 'Invalid'], autopct='%1.1f%%', colors=['#4CAF50','#f44336'])
+        te = self.vs.get('total', 0); tr = max(len(self.df), 1)
+        valid = max(0, tr - te)
+        axes[1,0].pie([max(1, valid), max(0, te)], labels=['Valid', 'Invalid'], autopct='%1.1f%%', colors=['#4CAF50','#f44336'])
         axes[1,0].set_title('Valid vs Invalid')
         keys = ['completeness','consistency','duplicate_free','format_validity','outlier_free']
         labels = ['Completeness','Consistency','No Dupes','Format','No Outliers']
@@ -391,74 +554,89 @@ def upload_route():
             try: r2_client.upload_file(fp, os.environ.get('R2_BUCKET', 'statclean'), f"uploads/{session_id}{ext}")
             except: pass
         parser = DataParser(fp); df = parser.parse(); info = parser.get_info()
-        sessions[session_id] = {'filepath': fp, 'df': df, 'original_df': df.copy(), 'info': info,
-            'cleaner_report': {}, 'validator_summary': {}, 'outlier_summary': {}, 'quality_scores': {}}
+        save_session(session_id, {'filepath': fp, 'df': df, 'original_df': df.copy(), 'info': info,
+            'cleaner_report': {}, 'validator_summary': {}, 'outlier_summary': {}, 'quality_scores': {}})
         return redirect(url_for('dashboard', session_id=session_id))
     return render('upload.html')
 
 @app.route('/dashboard/<session_id>')
 def dashboard(session_id):
-    s = sessions.get(session_id)
-    if not s: flash('Session not found', 'error'); return redirect(url_for('index'))
+    s = get_session(session_id)
+    if not s: flash('Session not found or expired. Please re-upload your file.', 'error'); return redirect(url_for('index'))
     return render('dashboard.html', session_id=session_id, info=s['info'])
 
 @app.route('/api/<session_id>/preview')
 def api_preview(session_id):
-    s = sessions.get(session_id)
-    if not s: return jsonify({'error': 'Not found'}), 404
+    s = get_session(session_id)
+    if not s: return jsonify({'error': 'Session not found'}), 404
     head = s['df'].head(20).fillna('').to_dict(orient='records')
     return jsonify({'columns': list(s['df'].columns), 'rows': head, 'total': len(s['df'])})
 
 @app.route('/api/<session_id>/clean', methods=['POST'])
 def api_clean(session_id):
-    s = sessions.get(session_id)
-    if not s: return jsonify({'error': 'Not found'}), 404
+    s = get_session(session_id)
+    if not s: return jsonify({'error': 'Session not found'}), 404
     data = request.get_json() or {}
-    df = s['original_df'].copy()
-    cleaner = DataCleaner(df); cleaner.clean_whitespace(); cleaner.detect_missing()
     strategy = data.get('strategy', 'drop')
+    if strategy not in ('drop', 'fill'):
+        return jsonify({'error': f"Invalid strategy '{strategy}'. Use 'drop' or 'fill'."}), 400
+    df = s['original_df'].copy()
+    cleaner = DataCleaner(df); cleaner.clean_whitespace()
     if strategy == 'drop': cleaner.handle_missing(strategy='drop')
     else: cleaner.handle_missing(strategy='fill', column_strategy=data.get('column_strategy'))
     if data.get('remove_duplicates', True): cleaner.remove_duplicates(subset=data.get('dup_subset'))
     s['df'] = cleaner.df; s['cleaner_report'] = cleaner.get_report()
+    save_session(session_id, s)
     return jsonify({'report': cleaner.get_report(), 'rows': len(cleaner.df)})
 
 @app.route('/api/<session_id>/validate', methods=['POST'])
 def api_validate(session_id):
-    s = sessions.get(session_id)
-    if not s: return jsonify({'error': 'Not found'}), 404
+    s = get_session(session_id)
+    if not s: return jsonify({'error': 'Session not found'}), 404
     validator = DataValidator(s['df']); validator.validate_format(); validator.validate_cross()
     s['validator_summary'] = validator.get_summary()
+    save_session(session_id, s)
     return jsonify({'summary': validator.get_summary(), 'format_errors': validator.format_errors, 'cross_errors': validator.cross_errors})
 
 @app.route('/api/<session_id>/outliers', methods=['POST'])
 def api_outliers(session_id):
-    s = sessions.get(session_id)
-    if not s: return jsonify({'error': 'Not found'}), 404
+    s = get_session(session_id)
+    if not s: return jsonify({'error': 'Session not found'}), 404
     detector = OutlierDetector(s['df']); detector.detect_all()
     s['outlier_summary'] = detector.get_summary()
+    save_session(session_id, s)
     return jsonify(detector.get_summary())
 
 @app.route('/api/<session_id>/quality')
 def api_quality(session_id):
-    s = sessions.get(session_id)
-    if not s: return jsonify({'error': 'Not found'}), 404
+    s = get_session(session_id)
+    if not s: return jsonify({'error': 'Session not found'}), 404
+    if not s.get('outlier_summary'):
+        detector = OutlierDetector(s['df']); detector.detect_all()
+        s['outlier_summary'] = detector.get_summary()
     scorer = QualityScorer(s['df'], s.get('cleaner_report',{}), s.get('validator_summary',{}), s.get('outlier_summary',{}))
     scores = scorer.compute(); s['quality_scores'] = scores
+    save_session(session_id, s)
     return jsonify(scores)
 
 @app.route('/api/<session_id>/charts')
 def api_charts(session_id):
-    s = sessions.get(session_id)
-    if not s: return jsonify({'error': 'Not found'}), 404
+    s = get_session(session_id)
+    if not s: return jsonify({'error': 'Session not found'}), 404
+    if not s.get('outlier_summary'):
+        detector = OutlierDetector(s['df']); detector.detect_all()
+        s['outlier_summary'] = detector.get_summary()
     exporter = DataExporter(s['df'], s.get('quality_scores',{}), s.get('cleaner_report',{}), s.get('validator_summary',{}), s.get('outlier_summary',{}))
     charts = exporter.generate_charts()
     return jsonify({'charts': charts})
 
 @app.route('/export/<session_id>/excel')
 def export_excel(session_id):
-    s = sessions.get(session_id)
-    if not s: flash('Session not found', 'error'); return redirect(url_for('index'))
+    s = get_session(session_id)
+    if not s: flash('Session not found or expired. Please re-upload.', 'error'); return redirect(url_for('index'))
+    if not s.get('outlier_summary'):
+        detector = OutlierDetector(s['df']); detector.detect_all()
+        s['outlier_summary'] = detector.get_summary()
     out_path = os.path.join(EXPORT_DIR, f"cleaned_{session_id}.xlsx")
     exporter = DataExporter(s['df'], s.get('quality_scores',{}), s.get('cleaner_report',{}), s.get('validator_summary',{}), s.get('outlier_summary',{}))
     exporter.export_cleaned(out_path)
@@ -472,8 +650,11 @@ def export_excel(session_id):
 
 @app.route('/export/<session_id>/report')
 def export_report(session_id):
-    s = sessions.get(session_id)
-    if not s: flash('Session not found', 'error'); return redirect(url_for('index'))
+    s = get_session(session_id)
+    if not s: flash('Session not found or expired. Please re-upload.', 'error'); return redirect(url_for('index'))
+    if not s.get('outlier_summary'):
+        detector = OutlierDetector(s['df']); detector.detect_all()
+        s['outlier_summary'] = detector.get_summary()
     scorer = QualityScorer(s['df'], s.get('cleaner_report',{}), s.get('validator_summary',{}), s.get('outlier_summary',{}))
     exporter = DataExporter(s['df'], scorer.compute(), s.get('cleaner_report',{}), s.get('validator_summary',{}), s.get('outlier_summary',{}))
     html = exporter.generate_report_html()
