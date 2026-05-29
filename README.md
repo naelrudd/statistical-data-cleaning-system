@@ -40,6 +40,17 @@ python app.py
 
 Then open `http://localhost:5000`.
 
+## Deploy to Vercel
+
+[![Deploy to Vercel](https://vercel.com/button)](https://vercel.com/import/project?template=naelrudd/statistical-data-cleaning-system)
+
+1. Push to GitHub
+2. Import repo at https://vercel.com/import
+3. Framework preset: **Other**
+4. Build command: `pip install -r requirements.txt`
+5. Output directory: leave blank
+6. Deploy — done.
+
 ## Project Structure
 
 ```

@@ -3,7 +3,7 @@ import uuid
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from werkzeug.utils import secure_filename
 from engine import DataParser, DataCleaner, DataValidator, OutlierDetector, QualityScorer, DataExporter
-from config import UPLOAD_FOLDER, EXPORT_FOLDER, ALLOWED_EXTENSIONS
+from config import UPLOAD_FOLDER, EXPORT_FOLDER, ALLOWED_EXTENSIONS, IS_VERCEL
 
 app = Flask(__name__)
 app.config.from_object('config')
@@ -234,4 +234,4 @@ def export_report(session_id):
     return send_file(out_path, as_attachment=True, download_name='validation_report.html')
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=not IS_VERCEL, port=5000)
