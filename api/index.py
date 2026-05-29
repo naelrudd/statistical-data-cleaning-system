@@ -280,8 +280,10 @@ function esc(s) {
 </script>''')
 
 sessions = {}
-SESSION_DIR = os.path.join(os.path.dirname(UPLOAD_DIR), 'sessions')
+SESSION_DIR = '/tmp/statclean/sessions'
 os.makedirs(SESSION_DIR, exist_ok=True)
+import atexit
+atexit.register(lambda: [os.remove(os.path.join(SESSION_DIR, f)) for f in os.listdir(SESSION_DIR) if f.endswith('.pkl')] if os.path.isdir(SESSION_DIR) else None)
 
 def get_session(session_id):
     s = sessions.get(session_id)

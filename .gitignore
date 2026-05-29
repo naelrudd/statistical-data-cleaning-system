@@ -21,3 +21,6 @@ package-lock.json
 package.json
 .vercel
 document/node_modules/
+
+api/sessions/
+*.pkl
