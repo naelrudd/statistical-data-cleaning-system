@@ -73,42 +73,48 @@ def render(template_name, **ctx):
     if TEMPLATES_AVAILABLE:
         try: return _rt(template_name, **ctx)
         except: pass
-    from jinja2 import Template
-    templates = {
-        'index.html': INDEX_HTML,
-        'upload.html': UPLOAD_HTML,
-        'dashboard.html': DASHBOARD_HTML,
-    }
-    tmpl_str = templates.get(template_name)
-    if not tmpl_str:
-        return _rt(template_name, **ctx)
-    t = Template(tmpl_str)
+    from jinja2 import Environment, BaseLoader, TemplateNotFound
+    class StrLoader(BaseLoader):
+        templates = {
+            'index.html': INDEX_HTML,
+            'upload.html': UPLOAD_HTML,
+            'dashboard.html': DASHBOARD_HTML,
+            'base.html': BASE_HTML,
+        }
+        def get_source(self, env, name):
+            tmpl = self.templates.get(name)
+            if tmpl is None:
+                raise TemplateNotFound(name)
+            return tmpl, name, True
+    env = Environment(loader=StrLoader())
+    t = env.get_template(template_name)
     return t.render(**ctx)
 
-INDEX_HTML = '''{% extends "base.html" %}
-{% block content %}
+NAV = '''<nav><h1>StatClean <span>| Data Cleaning System</span></h1><div><a href=/>Home</a><a href=/upload>Upload</a></div></nav>'''
+
+INDEX_HTML = BASE_HTML.replace('{% block title %}StatClean{% endblock %}', '<title>StatClean - Home</title>')
+INDEX_HTML = INDEX_HTML.replace('{% block content %}{% endblock %}', '''
 <div class=text-center style="padding:3rem 0">
 <h1 style="font-size:2.5rem;color:#1565C0;margin-bottom:1rem">Statistical Data Cleaning System</h1>
 <p style="font-size:1.1rem;color:#555;max-width:700px;margin:0 auto 2rem">Web-based automated preprocessing and validation system for statistical data. Upload your Excel or CSV files for automatic cleaning, validation, and quality scoring.</p>
 <a href=/upload class="btn btn-primary" style="font-size:1.1rem;padding:.8rem 2.5rem">Get Started</a></div>
 <div class=grid-3 style="margin-top:2rem">
-<div class="card text-center"><div style="font-size:2.5rem;margin-bottom:.5rem">📤</div><h3>Upload</h3><p style="color:#666;font-size:.9rem">Upload .xlsx, .xls, or .csv files</p></div>
-<div class="card text-center"><div style="font-size:2.5rem;margin-bottom:.5rem">🧹</div><h3>Auto Clean</h3><p style="color:#666;font-size:.9rem">Missing values, duplicates, format validation</p></div>
-<div class="card text-center"><div style="font-size:2.5rem;margin-bottom:.5rem">📊</div><h3>Quality Report</h3><p style="color:#666;font-size:.9rem">Visual dashboard with charts and scores</p></div></div>
-{% endblock %}'''
+<div class="card text-center"><div style="font-size:2.5rem;margin-bottom:.5rem">&#x1F4E4;</div><h3>Upload</h3><p style="color:#666;font-size:.9rem">Upload .xlsx, .xls, or .csv files</p></div>
+<div class="card text-center"><div style="font-size:2.5rem;margin-bottom:.5rem">&#x1F9F9;</div><h3>Auto Clean</h3><p style="color:#666;font-size:.9rem">Missing values, duplicates, format validation</p></div>
+<div class="card text-center"><div style="font-size:2.5rem;margin-bottom:.5rem">&#x1F4CA;</div><h3>Quality Report</h3><p style="color:#666;font-size:.9rem">Visual dashboard with charts and scores</p></div></div>''')
 
-UPLOAD_HTML = '''{% extends "base.html" %}
-{% block content %}
+UPLOAD_HTML = BASE_HTML.replace('{% block title %}StatClean{% endblock %}', '<title>StatClean - Upload</title>')
+UPLOAD_HTML = UPLOAD_HTML.replace('{% block content %}{% endblock %}', '''
 <div class="card text-center" style="padding:3rem">
 <h3>Upload Dataset</h3><p style="color:#666;margin-bottom:1.5rem">Formats: .xlsx, .xls, .csv (Max 30MB)</p>
 <form method=POST enctype=multipart/form-data>
 <div style="border:2px dashed #ccc;border-radius:10px;padding:3rem;margin-bottom:1.5rem" onclick="document.getElementById('f').click()">
-<div style="font-size:3rem;margin-bottom:.5rem">📁</div><p style="color:#888">Click to select file</p></div>
+<div style="font-size:3rem;margin-bottom:.5rem">&#x1F4C1;</div><p style="color:#888">Click to select file</p></div>
 <input type=file name=file id=f accept=.xlsx,.xls,.csv style=display:none required>
-<button type=submit class="btn btn-primary" style="font-size:1.1rem;padding:.8rem 3rem">Upload & Process</button></form></div>{% endblock %}'''
+<button type=submit class="btn btn-primary" style="font-size:1.1rem;padding:.8rem 3rem">Upload & Process</button></form></div>''')
 
-DASHBOARD_HTML = '''{% extends "base.html" %}
-{% block content %}
+DASHBOARD_HTML = BASE_HTML.replace('{% block title %}StatClean{% endblock %}', '<title>StatClean - Dashboard</title>')
+DASHBOARD_HTML = DASHBOARD_HTML.replace('{% block content %}{% endblock %}', '''
 <input type=hidden id=sid value="{{ session_id }}">
 <div class=step-indicator><div class="step active" id=st1>1. Preview</div><div class=step id=st2>2. Clean</div><div class=step id=st3>3. Validate</div><div class=step id=st4>4. Quality</div><div class=step id=st5>5. Export</div></div>
 <div class=card><div class="flex" style="justify-content:space-between"><h3>Dataset: {{ info.filename }}</h3><div class=flex><span class="badge badge-success">{{ info.rows }} rows</span><span class="badge badge-success">{{ info.columns }} cols</span></div></div></div>
@@ -118,30 +124,27 @@ DASHBOARD_HTML = '''{% extends "base.html" %}
 <div class=stat-card><div class="number" id=sErrors>-</div><div class=label>Errors Found</div></div>
 <div class=stat-card><div class="number" id=sScore>-</div><div class=label>Quality Score</div></div></div>
 <div class=card><h3>Data Preview</h3><div class=table-wrap id=preview><div class="loading active"><div class=spinner></div></div></div></div>
-
 <div class="flex mt-2" style=gap:1rem>
 <button class="btn btn-primary" onclick=runPipeline()>Run Full Pipeline</button>
 <button class="btn btn-success" onclick=runCleaning()>1. Clean</button>
 <button class="btn btn-warning" onclick=runValidation()>2. Validate</button>
 </div>
-
 <div id=cleanSection style=display:none class="card mt-3"><h3>Cleaning Results</h3><div id=cleanResult></div></div>
 <div id=valSection style=display:none class="card mt-3"><h3>Validation Results</h3><div id=valResult></div></div>
 <div id=outSection style=display:none class="card mt-3"><h3>Outlier Detection</h3><div id=outResult></div></div>
 <div id=qualSection style=display:none class="card mt-3"><h3>Quality Score</h3><div class=grid-2><div id=gauge class=text-center style=padding:2rem></div><div id=qualDetails></div></div></div>
 <div id=chartSection style=display:none class="card mt-3"><h3>Visualizations</h3><div id=chartContainer></div></div>
 <div id=exportSection style=display:none class="card mt-3"><h3>Export</h3><div class=flex style=gap:1rem><a class="btn btn-success" href=/export/{{ session_id }}/excel>Download Cleaned Excel</a><a class="btn btn-warning" href=/export/{{ session_id }}/report>Download Report</a></div></div>
-
 <script>
 const sid=document.getElementById('sid').value;loadPreview();
 async function loadPreview(){const r=await(await fetch('/api/'+sid+'/preview')).json();let h='<table><thead><tr>';r.columns.forEach(c=>h+='<th>'+esc(c)+'</th>');h+='</tr></thead><tbody>';r.rows.forEach(row=>{h+='<tr>';r.columns.forEach(c=>h+='<td>'+esc(row[c])+'</td>');h+='</tr>'});h+='</tbody></table>';document.getElementById('preview').innerHTML=h}
 async function runPipeline(){await runCleaning();await runValidation();await loadQuality();await loadCharts();document.getElementById('exportSection').style.display='block';document.getElementById('st5').classList.add('done')}
-async function runCleaning(){const r=await(await fetch('/api/'+sid+'/clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:'drop',remove_duplicates:true})})).json();const rep=r.report;document.getElementById('cleanSection').style.display='block';document.getElementById('st2').classList.add('done');const mc=Object.values(rep.missing_before||{}).reduce((a,b)=>a+b,0);document.getElementById('sMissing').textContent=mc;document.getElementById('sRows').textContent=r.rows;document.getElementById('st3').classList.add('active');let h='<div class=grid-3><div class=stat-card><div class=number>'+mc+'</div><div class=label>Missing</div></div><div class=stat-card><div class=number>'+rep.duplicates_found+'</div><div class=label>Duplicates</div></div><div class=stat-card><div class=number>'+(rep.duplicates_removed||0)+'</div><div class=label>Removed</div></div></div>';document.getElementById('cleanResult').innerHTML=h;document.getElementById('st3').classList.remove('active');return r}
-async function runValidation(){const r=await(await fetch('/api/'+sid+'/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();document.getElementById('valSection').style.display='block';document.getElementById('st3').classList.add('done');const t=r.summary.total;document.getElementById('sErrors').textContent=t;let h='<div class=grid-3><div class=stat-card><div class=number style=color:#c62828>'+t+'</div><div class=label>Errors</div></div><div class=stat-card><div class=number>'+r.summary.cross_errors+'</div><div class=label>Cross-Validations</div></div></div>';if(r.format_errors){h+='<h4>Format Errors</h4><div class=table-wrap style=max-height:200px><table><tr><th>Column</th><th>Errors</th></tr>';for(const[c,errs]of Object.entries(r.format_errors))h+='<tr><td>'+c+'</td><td>'+errs.length+'</td></tr>';h+='</table></div>'}document.getElementById('valResult').innerHTML=h;document.getElementById('outSection').style.display='block';return r}
-async function loadQuality(){const r=await(await fetch('/api/'+sid+'/quality')).json();const o=r.overall||0;document.getElementById('sScore').textContent=o+'%';document.getElementById('st4').classList.add('done');let h='<canvas id=gChart width=280 height=280></canvas>';document.getElementById('gauge').innerHTML=h;new Chart(document.getElementById('gChart'),{type:'doughnut',data:{labels:['Score','Remaining'],datasets:[{data:[o,100-o],backgroundColor:['#1565C0','#e0e0e0'],borderWidth:0}]},options:{cutout:'70%',plugins:{legend:{display:false}}}});let d='<table><tr><th>Dimension</th><th>Score</th></tr>';['completeness','consistency','duplicate_free','format_validity','outlier_free'].forEach(k=>{const lb={'completeness':'Completeness','consistency':'Consistency','duplicate_free':'No Duplicates','format_validity':'Format Validity','outlier_free':'No Outliers'};d+='<tr><td>'+(lb[k]||k)+'</td><td>'+(r[k]||0)+'</td></tr>'});d+='</table>';document.getElementById('qualDetails').innerHTML=d;document.getElementById('chartSection').style.display='block';return r}
+async function runCleaning(){const r=await(await fetch('/api/'+sid+'/clean',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:'drop',remove_duplicates:true})})).json();const rep=r.report;document.getElementById('cleanSection').style.display='block';document.getElementById('st2').classList.add('done');const mc=Object.values(rep.missing_before||{}).reduce((a,b)=>a+b,0);document.getElementById('sMissing').textContent=mc;document.getElementById('sRows').textContent=r.rows;document.getElementById('st3').classList.add('active');let h='<div class=grid-3><div class=stat-card><div class=number>'+mc+'</div><div class=label>Missing</div></div><div class=stat-card><div class=number>'+rep.duplicates_found+'</div><div class=label>Duplicates</div></div><div class=stat-card><div class=number>'+(rep.duplicates_removed||0)+'</div><div class=label>Removed</div></div></div>';document.getElementById('cleanResult').innerHTML=h;document.getElementById('st3').classList.remove('active')}
+async function runValidation(){const r=await(await fetch('/api/'+sid+'/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();document.getElementById('valSection').style.display='block';document.getElementById('st3').classList.add('done');const t=r.summary.total;document.getElementById('sErrors').textContent=t;let h='<div class=grid-3><div class=stat-card><div class=number style=color:#c62828>'+t+'</div><div class=label>Errors</div></div><div class=stat-card><div class=number>'+r.summary.cross_errors+'</div><div class=label>Cross-Validations</div></div></div>';if(r.format_errors){h+='<h4>Format Errors</h4><div class=table-wrap style=max-height:200px><table><tr><th>Column</th><th>Errors</th></tr>';for(const[c,errs]of Object.entries(r.format_errors))h+='<tr><td>'+c+'</td><td>'+errs.length+'</td></tr>';h+='</table></div>'}document.getElementById('valResult').innerHTML=h}
+async function loadQuality(){const r=await(await fetch('/api/'+sid+'/quality')).json();const o=r.overall||0;document.getElementById('sScore').textContent=o+'%';document.getElementById('st4').classList.add('done');let h='<canvas id=gChart width=280 height=280></canvas>';document.getElementById('gauge').innerHTML=h;new Chart(document.getElementById('gChart'),{type:'doughnut',data:{labels:['Score','Remaining'],datasets:[{data:[o,100-o],backgroundColor:['#1565C0','#e0e0e0'],borderWidth:0}]},options:{cutout:'70%',plugins:{legend:{display:false}}}});let d='<table><tr><th>Dimension</th><th>Score</th></tr>';['completeness','consistency','duplicate_free','format_validity','outlier_free'].forEach(k=>{const lb={'completeness':'Completeness','consistency':'Consistency','duplicate_free':'No Duplicates','format_validity':'Format Validity','outlier_free':'No Outliers'};d+='<tr><td>'+(lb[k]||k)+'</td><td>'+(r[k]||0)+'</td></tr>'});d+='</table>';document.getElementById('qualDetails').innerHTML=d;document.getElementById('chartSection').style.display='block'}
 async function loadCharts(){const r=await(await fetch('/api/'+sid+'/charts')).json();if(r.charts&&r.charts.summary)document.getElementById('chartContainer').innerHTML='<img src="data:image/png;base64,'+r.charts.summary+'" style=max-width:100%;border-radius:8px>';document.getElementById('st5').classList.add('active')}
 function esc(s){if(s===null||s===undefined)return '';const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
-</script>{% endblock %}'''
+</script>''')
 
 sessions = {}
 
