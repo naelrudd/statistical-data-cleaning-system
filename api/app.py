@@ -5,7 +5,10 @@ from engine import DataParser, DataCleaner, DataValidator, OutlierDetector, Qual
 from config import UPLOAD_FOLDER, EXPORT_FOLDER, ALLOWED_EXTENSIONS, TEMP_FOLDER, IS_VERCEL
 from r2_storage import r2
 
-app = Flask(__name__)
+API_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__,
+    template_folder=os.path.join(API_DIR, 'templates'),
+    static_folder=os.path.join(API_DIR, 'static'))
 app.config.from_object('config')
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
