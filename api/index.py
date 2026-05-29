@@ -101,8 +101,8 @@ def render(template_name, **ctx):
                 tmpl = self.templates.get(name)
                 if tmpl is None:
                     raise TemplateNotFound(name)
-                return tmpl, name, True
-        _jinja_env = Environment(loader=StrLoader())
+                return tmpl, name, None
+        _jinja_env = Environment(loader=StrLoader(), auto_reload=False)
     html = _jinja_env.get_template(template_name).render(**ctx)
     html = html.replace('FLASH_PLACEHOLDER', flash_html())
     return html
@@ -283,7 +283,13 @@ sessions = {}
 SESSION_DIR = '/tmp/statclean/sessions'
 os.makedirs(SESSION_DIR, exist_ok=True)
 import atexit
-atexit.register(lambda: [os.remove(os.path.join(SESSION_DIR, f)) for f in os.listdir(SESSION_DIR) if f.endswith('.pkl')] if os.path.isdir(SESSION_DIR) else None)
+def _cleanup_sessions():
+    if os.path.isdir(SESSION_DIR):
+        for f in os.listdir(SESSION_DIR):
+            if f.endswith('.pkl'):
+                try: os.remove(os.path.join(SESSION_DIR, f))
+                except: pass
+atexit.register(_cleanup_sessions)
 
 def get_session(session_id):
     s = sessions.get(session_id)
