@@ -28,7 +28,7 @@ app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 
 # ==================== EMBEDDED TEMPLATES (fallback) ====================
-BASE_HTML = '''<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>{% block title %}StatClean{% endblock %}</title><script src=https://cdn.jsdelivr.net/npm/chart.js@4></script><style>
+BASE_HTML = '''<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">TITLE_PLACEHOLDER<script src=https://cdn.jsdelivr.net/npm/chart.js@4></script><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;background:#f0f2f5;color:#333;min-height:100vh}
 nav{background:#1565C0;color:#fff;padding:1rem 2rem;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.15)}
@@ -67,7 +67,7 @@ label{display:block;margin-bottom:.3rem;font-weight:500;font-size:.85rem}
 @media(max-width:768px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
 </style></head><body>
 <nav><h1>StatClean <span>| Data Cleaning System</span></h1><div><a href=/ >Home</a><a href=/upload>Upload</a></div></nav>
-<div class=container>{% block content %}{% endblock %}</div></body></html>'''
+<div class=container>CONTENT_PLACEHOLDER</div></body></html>'''
 
 def render(template_name, **ctx):
     if TEMPLATES_AVAILABLE:
@@ -90,10 +90,8 @@ def render(template_name, **ctx):
     t = env.get_template(template_name)
     return t.render(**ctx)
 
-NAV = '''<nav><h1>StatClean <span>| Data Cleaning System</span></h1><div><a href=/>Home</a><a href=/upload>Upload</a></div></nav>'''
-
-INDEX_HTML = BASE_HTML.replace('{% block title %}StatClean{% endblock %}', '<title>StatClean - Home</title>')
-INDEX_HTML = INDEX_HTML.replace('{% block content %}{% endblock %}', '''
+INDEX_HTML = BASE_HTML.replace('TITLE_PLACEHOLDER', '<title>StatClean - Home</title>')
+INDEX_HTML = INDEX_HTML.replace('CONTENT_PLACEHOLDER', '''
 <div class=text-center style="padding:3rem 0">
 <h1 style="font-size:2.5rem;color:#1565C0;margin-bottom:1rem">Statistical Data Cleaning System</h1>
 <p style="font-size:1.1rem;color:#555;max-width:700px;margin:0 auto 2rem">Web-based automated preprocessing and validation system for statistical data. Upload your Excel or CSV files for automatic cleaning, validation, and quality scoring.</p>
@@ -103,8 +101,8 @@ INDEX_HTML = INDEX_HTML.replace('{% block content %}{% endblock %}', '''
 <div class="card text-center"><div style="font-size:2.5rem;margin-bottom:.5rem">&#x1F9F9;</div><h3>Auto Clean</h3><p style="color:#666;font-size:.9rem">Missing values, duplicates, format validation</p></div>
 <div class="card text-center"><div style="font-size:2.5rem;margin-bottom:.5rem">&#x1F4CA;</div><h3>Quality Report</h3><p style="color:#666;font-size:.9rem">Visual dashboard with charts and scores</p></div></div>''')
 
-UPLOAD_HTML = BASE_HTML.replace('{% block title %}StatClean{% endblock %}', '<title>StatClean - Upload</title>')
-UPLOAD_HTML = UPLOAD_HTML.replace('{% block content %}{% endblock %}', '''
+UPLOAD_HTML = BASE_HTML.replace('TITLE_PLACEHOLDER', '<title>StatClean - Upload</title>')
+UPLOAD_HTML = UPLOAD_HTML.replace('CONTENT_PLACEHOLDER', '''
 <div class="card text-center" style="padding:3rem">
 <h3>Upload Dataset</h3><p style="color:#666;margin-bottom:1.5rem">Formats: .xlsx, .xls, .csv (Max 30MB)</p>
 <form method=POST enctype=multipart/form-data>
@@ -113,8 +111,8 @@ UPLOAD_HTML = UPLOAD_HTML.replace('{% block content %}{% endblock %}', '''
 <input type=file name=file id=f accept=.xlsx,.xls,.csv style=display:none required>
 <button type=submit class="btn btn-primary" style="font-size:1.1rem;padding:.8rem 3rem">Upload & Process</button></form></div>''')
 
-DASHBOARD_HTML = BASE_HTML.replace('{% block title %}StatClean{% endblock %}', '<title>StatClean - Dashboard</title>')
-DASHBOARD_HTML = DASHBOARD_HTML.replace('{% block content %}{% endblock %}', '''
+DASHBOARD_HTML = BASE_HTML.replace('TITLE_PLACEHOLDER', '<title>StatClean - Dashboard</title>')
+DASHBOARD_HTML = DASHBOARD_HTML.replace('CONTENT_PLACEHOLDER', '''
 <input type=hidden id=sid value="{{ session_id }}">
 <div class=step-indicator><div class="step active" id=st1>1. Preview</div><div class=step id=st2>2. Clean</div><div class=step id=st3>3. Validate</div><div class=step id=st4>4. Quality</div><div class=step id=st5>5. Export</div></div>
 <div class=card><div class="flex" style="justify-content:space-between"><h3>Dataset: {{ info.filename }}</h3><div class=flex><span class="badge badge-success">{{ info.rows }} rows</span><span class="badge badge-success">{{ info.columns }} cols</span></div></div></div>
