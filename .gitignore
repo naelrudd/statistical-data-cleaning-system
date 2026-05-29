@@ -16,4 +16,8 @@ dist/
 *.csv
 *.html
 
+node_modules/
+package-lock.json
+package.json
 .vercel
+document/node_modules/
