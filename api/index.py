@@ -1,6 +1,6 @@
 import os, sys, uuid, io, base64, re, json
 from datetime import datetime
-from flask import Flask, render_template as _rt, request, redirect, url_for, flash, jsonify, send_file
+from flask import Flask, render_template as _rt, request, redirect, url_for, flash, jsonify, send_file, get_flashed_messages
 from jinja2 import Environment, BaseLoader, TemplateNotFound
 
 
@@ -68,15 +68,21 @@ label{display:block;margin-bottom:.3rem;font-weight:500;font-size:.85rem}
 @media(max-width:768px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
 </style></head><body>
 <nav><h1>StatClean <span>| Data Cleaning System</span></h1><div><a href=/ >Home</a><a href=/upload>Upload</a></div></nav>
-<div class=container>
-{% with messages = get_flashed_messages(with_categories=true) %}
-{% if messages %}{% for category, msg in messages %}
-<div class="flash {{ 'flash-'+category if category else '' }}" style="padding:.8rem 1rem;border-radius:6px;margin-bottom:1rem;font-size:.9rem;background:#fff3e0;color:#e65100;border:1px solid #ffe0b2">{{ msg }}</div>
-{% endfor %}{% endif %}
-{% endwith %}
+<div class=container>FLASH_PLACEHOLDER
 CONTENT_PLACEHOLDER</div></body></html>'''
 
 _jinja_env = None
+
+def flash_html():
+    msgs = get_flashed_messages(with_categories=True)
+    if not msgs: return ''
+    parts = []
+    for cat, msg in msgs:
+        bg = '#fff3e0'; color = '#e65100'; border = '#ffe0b2'
+        if cat == 'error': bg = '#ffebee'; color = '#c62828'; border = '#ffcdd2'
+        elif cat == 'success': bg = '#e8f5e9'; color = '#2e7d32'; border = '#c8e6c9'
+        parts.append(f'<div style="padding:.8rem 1rem;border-radius:6px;margin-bottom:1rem;font-size:.9rem;background:{bg};color:{color};border:1px solid {border}">{msg}</div>')
+    return ''.join(parts)
 
 def render(template_name, **ctx):
     global _jinja_env
@@ -97,8 +103,9 @@ def render(template_name, **ctx):
                     raise TemplateNotFound(name)
                 return tmpl, name, True
         _jinja_env = Environment(loader=StrLoader())
-    t = _jinja_env.get_template(template_name)
-    return t.render(**ctx)
+    html = _jinja_env.get_template(template_name).render(**ctx)
+    html = html.replace('FLASH_PLACEHOLDER', flash_html())
+    return html
 
 INDEX_HTML = BASE_HTML.replace('TITLE_PLACEHOLDER', '<title>StatClean - Home</title>')
 INDEX_HTML = INDEX_HTML.replace('CONTENT_PLACEHOLDER', '''
