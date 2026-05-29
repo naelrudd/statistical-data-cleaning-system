@@ -15,3 +15,5 @@ dist/
 *.xlsx
 *.csv
 *.html
+
+.vercel
